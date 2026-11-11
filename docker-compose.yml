@@ -1,0 +1,90 @@
+services:
+  nginx_proxy:
+    image: nginx:alpine
+    container_name: storex-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - user_service
+      - product_service
+    networks:
+      - storex-net
+
+  backend:
+    build:
+      context: ./storex-backend
+      dockerfile: Dockerfile
+    image: storex-backend:v2
+    container_name: storex-backend
+    expose:
+      - "8080"
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - storex-net
+
+  user_service:
+    image: storex-user:latest
+    container_name: storex-user
+    expose:
+      - "8081"
+    networks:
+      - storex-net
+
+  product_service:
+    image: storex-product:latest
+    container_name: storex-product
+    expose:
+      - "8082"
+    networks:
+      - storex-net
+
+  postgres:
+    image: postgres:13
+    container_name: storex-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - storex_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d storex_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - storex-net
+
+  redis:
+    image: redis:alpine
+    container_name: storex-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - storex-net
+
+volumes:
+  storex_postgres_data:
+
+networks:
+  storex-net:
+    driver: bridge
